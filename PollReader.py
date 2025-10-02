@@ -1,6 +1,6 @@
 import os
+import csv
 import unittest
-
 
 class PollReader():
     """
@@ -43,69 +43,106 @@ class PollReader():
             'Trump result': []
         }
 
+    def _to_int(self, s):
+        return int(s.replace(',','').strip())
+    
+    def _to_pct_decimal(self, s):
+        v = float(s.strip())
+        return v/100.0 if v > 1.0 else v
+       
+
     def build_data_dict(self):
-        """
-        Reads all of the raw data from the CSV and builds a dictionary where
-        each key is the name of a column in the CSV, and each value is a list
-        containing the data for each row under that column heading.
+        self.data_dict = {
+            'month': [],
+            'date': [],
+            'sample': [],
+            'sample type': [],
+            'Harris result': [],
+            'Trump result': []
+        }
 
-        There may be a couple bugs in this that you will need to fix.
-        Remember that the first row of a CSV contains all of the column names,
-        and each value in a CSV is seperated by a comma.
-        """
+        lines = [r.strip() for r in self.raw_data if r.strip()]
+        if not lines:
+            return
+        header = lines[0]
+        for line in lines[1:]:
+            parts = [p.strip() for p in line.split(',')]
+            if len(parts) < 5:
+                continue
+            month = parts[0]
+            date = self._to_int(parts[1])
 
-        # iterate through each row of the data
-        for i in self.raw_data:
+            sample_parts = parts[2].split()
+            sample_str = sample_parts[0].replace(',', '')
+            sample_val = int(sample_str)
+            sample_type = sample_parts[1] if len(sample_parts) > 1 else ""
 
-            # split up the row by column
-            seperated = i.split(' ')
 
-            # map each part of the row to the correct column
-            self.data_dict['month'].append(seperated[0])
-            self.data_dict['date'].append(int(seperated[1]))
-            self.data_dict['sample'].append(int(seperated[2]))
-            self.data_dict['sample type'].append(seperated[2])
-            self.data_dict['Harris result'].append(float(seperated[3]))
-            self.data_dict['Trump result'].append(float(seperated[4]))
+            harris = self._to_pct_decimal(parts[3])
+            trump = self._to_pct_decimal(parts[4])
 
+            self.data_dict['month'].append(month)
+            self.data_dict['date'].append(date)
+            self.data_dict['sample'].append(sample_val)
+            self.data_dict['sample type'].append(sample_type)
+            self.data_dict['Harris result'].append(harris)
+            self.data_dict['Trump result'].append(trump)
 
     def highest_polling_candidate(self):
-        """
-        This method should iterate through the result columns and return
-        the name of the candidate with the highest single polling percentage
-        alongside the highest single polling percentage.
-        If equal, return the highest single polling percentage and "EVEN".
-
-        Returns:
-            str: A string indicating the candidate with the highest polling percentage or EVEN,
-             and the highest polling percentage.
-        """
-        pass
+        h = self.data_dict['Harris result']
+        t = self.data_dict['Trump result']
+        if not h or not t:
+            return "EVEN 0.0%"
+        max_h = max(h)
+        max_t = max(t)
+        if max_h > max_t:
+            return f"Harris {max_h * 100:.1f}%"
+        elif max_t > max_h:
+            return f"Trump {max_t * 100:.1f}%"
+        else:
+            return f"EVEN {max_h * 100:.1f}%"
 
 
     def likely_voter_polling_average(self):
-        """
-        Calculate the average polling percentage for each candidate among likely voters.
+        types = self.data_dict['sample type']
+        h_vals = self.data_dict['Harris result']
+        t_vals = self.data_dict['Trump result']
+        
+        lv_h, lv_t = [], []
+        for typ, h, t in zip(types, h_vals, t_vals):
+            tl = typ.lower()
+            if tl == 'lv' or 'likely' in tl:
+                lv_h.append(h)
+                lv_t.append(t)
 
-        Returns:
-            tuple: A tuple containing the average polling percentages for Harris and Trump
-                   among likely voters, in that order.
-        """
-        pass
+        if not lv_h:
+            if not h_vals:
+                return 0.0, 0.0
+            lv_h = h_vals[:]
+            lv_t = t_vals[:]
+
+        h_avg = sum(lv_h) / len(lv_h)
+        t_avg = sum(lv_t) / len(lv_t)
+        return h_avg, t_avg
 
 
     def polling_history_change(self):
-        """
-        Calculate the change in polling averages between the earliest and latest polls.
+        h = self.data_dict['Harris result']
+        t = self.data_dict['Trump result']
+        n = len(h)
+        if n == 0:
+            return 0.0, 0.0
 
-        This method calculates the average result for each candidate in the earliest 30 polls
-        and the latest 30 polls, then returns the net change.
+        k = 30 if n >= 60 else max(1, n // 2)
 
-        Returns:
-            tuple: A tuple containing the net change for Harris and Trump, in that order.
-                   Positive values indicate an increase, negative values indicate a decrease.
-        """
-        pass
+        latest_h = h[:k]
+        earliest_h = h[-k:]
+        latest_t = t[:k]
+        earliest_t = t[-k:]
+ 
+        h_change = (sum(latest_h)/len(latest_h)) - (sum(earliest_h)/len(earliest_h))
+        t_change = (sum(latest_t)/len(latest_t)) - (sum(earliest_t)/len(earliest_t))
+        return h_change, t_change
 
 
 class TestPollReader(unittest.TestCase):
